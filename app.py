@@ -1,83 +1,168 @@
 import gradio as gr
 from transformers import pipeline
-from diffusers import StableDiffusionPipeline
-import torch
-import networkx as nx
-import matplotlib.pyplot as plt
-import tempfile
+from PIL import Image, ImageDraw
+import random
 
-# Load pipelines
-classifier = pipeline("text-classification", model="bhadresh-savani/bert-base-uncased-emotion")  # Replace with env-trained model
-ner_pipe = pipeline("ner", grouped_entities=True)
-fill_mask = pipeline("fill-mask", model="bert-base-uncased")
-
-# Image generation (Stable Diffusion)
-sd_pipe = StableDiffusionPipeline.from_pretrained(
-    "runwayml/stable-diffusion-v1-5",
-    torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32
+classifier = pipeline(
+    "sentiment-analysis"
 )
-sd_pipe = sd_pipe.to("cuda" if torch.cuda.is_available() else "cpu")
 
-# 1. Sentence Classification
-def classify_text(text):
-    result = classifier(text)
-    return result[0]['label']
+summarizer = pipeline(
+    "summarization",
+    model="facebook/bart-large-cnn"
+)
 
-# 2. Image Generation
-def generate_image(prompt):
-    image = sd_pipe(prompt).images[0]
-    return image
+fill_mask = pipeline(
+    "fill-mask",
+    model="bert-base-uncased"
+)
 
-# 3. NER and Graph
-def ner_graph(text):
-    entities = ner_pipe(text)
-    G = nx.Graph()
-    for ent in entities:
-        G.add_node(ent['word'], label=ent['entity_group'])
-    for i in range(len(entities)):
-        for j in range(i+1, len(entities)):
-            G.add_edge(entities[i]['word'], entities[j]['word'])
+def analyze_text(text):
 
-    # Draw and return image
-    with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
-        plt.figure(figsize=(6, 4))
-        pos = nx.spring_layout(G)
-        nx.draw(G, pos, with_labels=True, node_color='lightblue', edge_color='gray', node_size=2000)
-        plt.savefig(tmp.name)
-        plt.close()
-        return tmp.name
+    if text == "":
+        return "Please enter some text."
 
-# 4. Fill in the blank
-def fill_masked(text):
+    result = classifier(text)[0]
+
+    label = result["label"]
+    score = round(result["score"] * 100, 2)
+
+    return f"""
+Prediction: {label}
+
+Confidence: {score}%
+"""
+
+def generate_environment_image(prompt):
+
+    img = Image.new(
+        "RGB",
+        (500, 300),
+        color=(
+            random.randint(0, 255),
+            random.randint(0, 255),
+            random.randint(0, 255)
+        )
+    )
+
+    draw = ImageDraw.Draw(img)
+
+    draw.text(
+        (20, 120),
+        f"🌍 {prompt}",
+        fill="white"
+    )
+
+    return img
+
+def summarize_text(text):
+
+    if len(text.split()) < 30:
+        return "Please enter longer text."
+
+    summary = summarizer(
+        text,
+        max_length=60,
+        min_length=20,
+        do_sample=False
+    )
+
+    return summary[0]["summary_text"]
+
+def predict_mask(text):
+
+    if "[MASK]" not in text:
+        return ["Please use [MASK] token."]
+
     results = fill_mask(text)
-    return [r['sequence'] for r in results]
 
-# Interface
+    output = []
+
+    for r in results[:5]:
+        output.append(r["sequence"])
+
+    return output
+
 with gr.Blocks() as demo:
-    gr.Markdown("## 🌱 Environment AI Tasks using Hugging Face 🤗")
-    
-    with gr.Tab("1️⃣ Sentence Classification"):
-        inp1 = gr.Textbox(label="Enter environmental sentence")
-        out1 = gr.Textbox(label="Predicted Category")
-        btn1 = gr.Button("Classify")
-        btn1.click(classify_text, inp1, out1)
 
-    with gr.Tab("2️⃣ Image Generation from Prompt"):
-        inp2 = gr.Textbox(label="Describe an environment scene")
-        out2 = gr.Image(label="Generated Image")
-        btn2 = gr.Button("Generate Image")
-        btn2.click(generate_image, inp2, out2)
+    gr.Markdown("""
+    # 🌱 EcoVision AI
 
-    with gr.Tab("3️⃣ Named Entity Recognition with Graph"):
-        inp3 = gr.Textbox(label="Enter a sentence about environment")
-        out3 = gr.Image(label="NER Graph")
-        btn3 = gr.Button("Generate NER Graph")
-        btn3.click(ner_graph, inp3, out3)
+    Environmental NLP and AI Intelligence System
+    """)
 
-    with gr.Tab("4️⃣ Fill in the Blank (Masked Word)"):
-        inp4 = gr.Textbox(label="Enter sentence with [MASK] token")
-        out4 = gr.JSON(label="Predicted Sentences")
-        btn4 = gr.Button("Predict Mask")
-        btn4.click(fill_masked, inp4, out4)
+    with gr.Tab("🧠 Sentiment Analysis"):
+
+        inp1 = gr.Textbox(
+            label="Enter Environmental Text",
+            lines=4
+        )
+
+        out1 = gr.Textbox(
+            label="Analysis Result"
+        )
+
+        btn1 = gr.Button("Analyze")
+
+        btn1.click(
+            analyze_text,
+            inp1,
+            out1
+        )
+
+    with gr.Tab("🎨 AI Environmental Poster"):
+
+        inp2 = gr.Textbox(
+            label="Enter Poster Theme"
+        )
+
+        out2 = gr.Image(
+            label="Generated Poster"
+        )
+
+        btn2 = gr.Button("Generate")
+
+        btn2.click(
+            generate_environment_image,
+            inp2,
+            out2
+        )
+
+    with gr.Tab("📝 Text Summarizer"):
+
+        inp3 = gr.Textbox(
+            label="Enter Long Environmental Article",
+            lines=8
+        )
+
+        out3 = gr.Textbox(
+            label="Summary"
+        )
+
+        btn3 = gr.Button("Summarize")
+
+        btn3.click(
+            summarize_text,
+            inp3,
+            out3
+        )
+
+    with gr.Tab("🧩 Fill Mask Prediction"):
+
+        inp4 = gr.Textbox(
+            label="Use [MASK] token"
+        )
+
+        out4 = gr.JSON(
+            label="Predictions"
+        )
+
+        btn4 = gr.Button("Predict")
+
+        btn4.click(
+            predict_mask,
+            inp4,
+            out4
+        )
 
 demo.launch()
