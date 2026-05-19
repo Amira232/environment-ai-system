@@ -2,5 +2,7 @@ gradio
 transformers
 diffusers
 torch
-matplotlib
 networkx
+matplotlib
+accelerate
+sentencepiece
