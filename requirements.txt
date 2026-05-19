@@ -1,5 +1,6 @@
-gradio
-transformers
+streamlit
+transformers==4.41.2
 torch
+gradio
 pillow
 sentencepiece
